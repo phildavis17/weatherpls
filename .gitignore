@@ -1,0 +1,7 @@
+weatherpls_secrets.py
+__pycache__
+.mypy_cache
+.pytest_cache
+cache
+/env
+scratch.py
