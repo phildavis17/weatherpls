@@ -113,6 +113,7 @@ class WeatherReport():
     def __init__(self, lat:float, long:float, units:str=DEFAULT_UNITS) -> None:
         weather_dict = _get_weather_info_by_coord(lat, long, units)
         loc_dict = _osm_reverse_lookup(lat, long)
+        self.coords = (lat, long)
         self.units = units
         self.loc_name = loc_dict["name"]
         self.input_data = weather_dict
@@ -318,7 +319,7 @@ class WeatherReport():
         return wind_description
 
 
-if __name__ == "__main__":
+def run_as_cli() -> None:
     parser = argparse.ArgumentParser(description="get the weather")
     mode_args = parser.add_mutually_exclusive_group()
     mode_args.add_argument("--now", action="store_true")
@@ -345,3 +346,14 @@ if __name__ == "__main__":
             break
     else:
         print(weather.get_current_weather())
+
+
+if __name__ == "__main__":
+    run_as_cli()
+
+
+
+
+# Load the dict of known locations
+# if the lcoation is in the dict, extract the json from the cache
+# if not, ping the server, and cache the value
