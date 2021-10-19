@@ -163,37 +163,3 @@ class JsonCache:
         self._purge_expired()
         self._cull_to_size()
         self.write_file()
-        
-
-"""
-
-each cache has:
- - a file (defaults to ./cache/{name_of_function}.json)
- - a list of update conditions
- - a max size
- - a max age
- - the actual cache
-
-each entry looks like:
- - {argument string: (value, age)}
-
-
-at some point we need to:
-- open the file for writing
-- read the files contents into a new JsonCache object
-- 
-
-"""
-
-def test_1():
-    print(DEFAULT_PATH)
-
-def import_inspect_test():
-    return inspect.stack()[-2].function
-
-#print(import_inspect_test())
-
-if __name__ == "__main__":
-    test_cache = JsonCache()
-    test_cache.store("test_call", "thank you!")
-    print("")

@@ -14,9 +14,6 @@ from weatherpls_secrets import OWM_API_KEY
 from weatherpls_config import DEFAULT_LAT, DEFAULT_LONG, DEFAULT_UNITS
 
 
-# TODO: cached weather requests (10 min) 
-# TODO: geocode caching for LAT/LONG (+/- some threshold))
-
 dirs = AppDirs(appname="weatherpls")
 
 def _mps_to_mph(s: float) -> float:
@@ -353,10 +350,3 @@ def run_as_cli() -> None:
 
 if __name__ == "__main__":
     run_as_cli()
-
-
-
-
-# Load the dict of known locations
-# if the lcoation is in the dict, extract the json from the cache
-# if not, ping the server, and cache the value
