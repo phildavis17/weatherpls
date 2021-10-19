@@ -7,6 +7,9 @@ import datetime
 import json
 import requests
 
+from appdirs import AppDirs
+
+from json_cache import cached
 from weatherpls_secrets import OWM_API_KEY
 from weatherpls_config import DEFAULT_LAT, DEFAULT_LONG, DEFAULT_UNITS
 
@@ -14,9 +17,7 @@ from weatherpls_config import DEFAULT_LAT, DEFAULT_LONG, DEFAULT_UNITS
 # TODO: cached weather requests (10 min) 
 # TODO: geocode caching for LAT/LONG (+/- some threshold))
 
-def _k_to_f(k: float) -> float:
-    """Returns the supplied float converted from Kelvin to Farenheit."""
-    return round((k-273.15) * 9/5 + 32, 3)
+dirs = AppDirs(appname="weatherpls")
 
 def _mps_to_mph(s: float) -> float:
     """Returns the supplied float converted from meters per second to miles per hour."""
@@ -95,12 +96,14 @@ def _get_short_date_from_timestamp(timestamp: int) -> str:
     dt = datetime.date.fromtimestamp(timestamp)
     return dt.strftime(f"{dt.month}/{dt.day}/%y")
 
+@cached(max_age=600)
 def _get_weather_info_by_coord(lat: float, long: float, units: str, api_key=OWM_API_KEY) -> dict:
     """Requests weather info for the supplied lat long coordinates from the OpenWeatherMap API and returns the response as a JSON object."""
     weather_api_uri = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={long}&appid={api_key}&units={units}"
     raw_response = requests.get(weather_api_uri)
     return json.loads(raw_response.text)
 
+@cached(max_size=10)
 def _osm_reverse_lookup(lat: float, long: float):
     """Uses the OpenStreetMap API to reverse-geocode the supplied lat long coordinates."""
     osm_reverse_api_uri = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={long}&zoom=10&format=jsonv2"

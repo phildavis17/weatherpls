@@ -1,25 +1,53 @@
-"""A local JSON cache"""
-
-#! Issues
-#! 
-#! Design
-#! - How many caches? (one per cached method?) 
-#!
-#! Process
-#! - getting the name of the cached method
-#!   - inspect.getframeinfo(f.f_back) gets the info of the calling frame
-#! - generating the call string
+"""
+A tool for light-duty memoization, intended for use with APIs.
+"""
 
 
 import inspect
 import json
+import logging
 
-from datetime import datetime, timedelta, timezone
+from appdirs import AppDirs
+
+from datetime import datetime, timezone
+from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Callable, Union
 
-DEFAULT_PATH = Path(__file__).parent / "cache" / "test_cache"
-#DEFAULT_PATH = Path(__file__) / "cache" / str(inspect.stack()[1].filename)
+default_dirs = AppDirs()
+
+DEFAULT_PATH = Path(default_dirs.user_cache_dir)
+
+
+def cached(func = None, cache_dir: Path = None, max_size: int = 0, max_age: int = 0, force_update:bool = False) -> Callable:
+    if cache_dir is None:
+            frame = inspect.getframeinfo(inspect.currentframe().f_back)
+            cache_dir = Path(default_dirs.user_cache_dir) / Path(frame.filename).stem
+    if func is None:
+        return partial(cached, cache_dir=cache_dir, max_size=max_size, max_age=max_age, force_update=force_update)
+    @wraps(func)
+    def cache_wrapper(*args, **kwargs):
+        cache_file_path = Path(cache_dir) / f"{func.__name__}_cache"
+        # Log a warning if a supplied argument does not have a good string representation
+        for arg in args:
+            warn_if_no_str(arg)
+        for k, v in kwargs:
+            warn_if_no_str(k)
+            warn_if_no_str(v)
+        call_string = f"{args}, {kwargs}"
+        with JsonCache(cache_file_path, max_size=max_size, max_age=max_age, force_update=force_update) as cache:
+            if call_string not in cache:
+                cache.store(call_string, func(*args, **kwargs))
+                logging.info("%s cached.", call_string)
+            return cache.retrieve(call_string)
+    return cache_wrapper
+
+
+def warn_if_no_str(item: Any) -> None:
+    """Logs a warning if the supplied item does not have a callable __str__ method."""
+    if hasattr(item, "__str__") and callable(getattr(item, "__str__")):
+        return
+    logging.warning("%s does not have a good string representation. Cache may not behave as expected.")
 
 
 def make_timestamp() -> float:
@@ -29,12 +57,14 @@ def make_timestamp() -> float:
 
 class JsonCache:
     """
+    Creates a persistent JSON based cache.
+    Intended to be performant relative to a potentially slow API, not relative to built in lru_cache or similar.
     N.B. Rules for max size and max age are enforced when the file is saved, but the cache object may exceed limits while it is live in memory.
     """
     
-    def __init__(self, file_path:Union[Path, str] = DEFAULT_PATH, max_size: int = 0, max_age: int = 0, force_update: bool = False) -> None:        
+    def __init__(self, cache_file_path:Union[Path] = DEFAULT_PATH, max_size: int = 0, max_age: int = 0, force_update: bool = False) -> None:        
         """
-        Create a JSON cache for a function.
+        Create a persistent JSON cache for a function.
 
         Keyword Arguments:
          - path: the path to the file in which the chache is to be stored
@@ -42,7 +72,7 @@ class JsonCache:
          - max_age: the maximum age in seconds after which a cahced value must be replaced. 0 disables age checking. (default = 0)  
          - force_update: if set to True, fresh calls will be made regardless of cached status. (default = False)
         """
-        self.file_path = file_path
+        self.cache_file_path = cache_file_path
         self.max_size = max_size
         self.max_age = max_age
         self.force_update = force_update
@@ -95,18 +125,18 @@ class JsonCache:
             self._purge_n_oldest(len(self.cache) - self.max_size)
     
     def write_file(self) -> None:
-        if not self.file_path.parent.exists():
-            self.file_path.parent.mkdir(parents=True)
-        
-        with open(self.file_path, "w") as cache_file:
+        if not self.cache_file_path.parent.exists():
+            self.cache_file_path.parent.mkdir(parents=True)
+        with open(self.cache_file_path, "w") as cache_file:
             json.dump(self.cache, cache_file)
 
     def read_file(self) -> None:
         """Opens the associated cache file, and loads the file's contents to the cache dict."""
-        if not self.file_path.parent.exists():
-            self.file_path.parent.mkdir(parents=True)
-        
-        with open(self.file_path, "r") as cache_file:
+        if not self.cache_file_path.exists():
+            self.cache = dict()
+            return
+            #self.cache_file_path.parent.mkdir(parents=True)
+        with open(self.cache_file_path, "r") as cache_file:
             contents = cache_file.read()
             if contents:
                 self.cache = json.loads(contents)
@@ -114,7 +144,7 @@ class JsonCache:
                 self.cache = dict()
 
     def __contains__(self, item):
-        return item in self.cache
+        return item in self.cache and self._is_current(item)
 
     def __len__(self):
         return len(self.cache)
@@ -129,35 +159,13 @@ class JsonCache:
         self.read_file()
         return self
         
-    def __exit__(self):
+    def __exit__(self, *args, **kwargs):
         self._purge_expired()
         self._cull_to_size()
         self.write_file()
         
 
 """
-use a decorator to tag cahceable functions
-something like:
-@json_cahce(max_size = 10)
-
-use a context manager to trigger cache cleanup
-
-
-update_conditions = [
-    # A series of callables that return true if the item should be updated
-    is_not_cached,
-    is_too_old,
-    force_update,
-]
-
-
-Caching logic
- - on call, load the cache as a dict
- - if the item is in the cached and none of the update conditions are met, return cached value
- - else, run the fuction and cache the response
- - if the cache is over capacity, delete the oldest item until it's not
- - overwrite the cache file
-
 
 each cache has:
  - a file (defaults to ./cache/{name_of_function}.json)
@@ -187,5 +195,5 @@ def import_inspect_test():
 
 if __name__ == "__main__":
     test_cache = JsonCache()
-    test_cache._store("test_call", "thank you!")
+    test_cache.store("test_call", "thank you!")
     print("")
